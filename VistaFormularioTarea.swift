@@ -15,8 +15,8 @@ struct VistaFormularioTarea: View {
 
     // MARK: - Estado local del formulario
 
-    @State private var titulo: String = ""
-    @State private var completada: Bool = false
+    @State private var titulo: String        = ""
+    @State private var estaCompletada: Bool  = false
     @FocusState private var campoActivo: Bool
 
     // MARK: - Estado computado
@@ -70,7 +70,7 @@ struct VistaFormularioTarea: View {
 
     private var seccionEstado: some View {
         Section("Estado") {
-            Toggle("Completada", isOn: $completada)
+            Toggle("Completada", isOn: $estaCompletada)
                 .tint(.green)
         }
     }
@@ -101,8 +101,8 @@ struct VistaFormularioTarea: View {
     /// Rellena los campos si estamos en modo edición.
     private func cargarDatosIniciales() {
         if let tarea = viewModel.tareaParaEditar {
-            titulo     = tarea.titulo
-            completada = tarea.completada
+            titulo         = tarea.titulo
+            estaCompletada = tarea.estaCompletada
         }
         campoActivo = true
     }
@@ -110,11 +110,10 @@ struct VistaFormularioTarea: View {
     /// Llama al ViewModel para crear o actualizar según el modo activo.
     private func guardar() async {
         if let tarea = viewModel.tareaParaEditar {
-            await viewModel.actualizarTarea(tarea, nuevoTitulo: titulo, completada: completada)
+            await viewModel.actualizarTarea(tarea, nuevoTitulo: titulo, estaCompletada: estaCompletada)
         } else {
             await viewModel.crearTarea(titulo: titulo)
         }
-        // Solo cerramos si no hubo error
         if viewModel.errorActual == nil {
             viewModel.cerrarFormulario()
             dismiss()

@@ -44,11 +44,11 @@ final class TareasViewModel: ObservableObject {
 
     // MARK: - Intenciones públicas (llamadas desde la Vista)
 
-    /// Carga todas las tareas del usuario 1 desde la API.
+    /// Carga todas las tareas desde el backend de Postgres.
     func cargarTareas() async {
         iniciarCarga()
         do {
-            tareas = try await servicio.obtenerTareas(idUsuario: 1)
+            tareas = try await servicio.obtenerTareas()
         } catch {
             manejarError(error)
         }
@@ -60,11 +60,13 @@ final class TareasViewModel: ObservableObject {
         guard !titulo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         iniciarCarga()
         do {
-            var nueva = Tarea.nueva
-            nueva = Tarea(id: 0, idUsuario: 1, titulo: titulo.trimmingCharacters(in: .whitespaces), completada: false)
+            let nueva  = Tarea(
+                id:             0,
+                titulo:         titulo.trimmingCharacters(in: .whitespaces),
+                estaCompletada: false,
+                fechaCreacion:  Date()
+            )
             let creada = try await servicio.crearTarea(nueva)
-            // JSONPlaceholder devuelve id: 201 para todos los POSTs;
-            // en una API real se usaría `creada` directamente.
             tareas.insert(creada, at: 0)
         } catch {
             manejarError(error)
@@ -73,11 +75,11 @@ final class TareasViewModel: ObservableObject {
     }
 
     /// Actualiza el título y/o estado de completado de una tarea existente.
-    func actualizarTarea(_ tarea: Tarea, nuevoTitulo: String, completada: Bool) async {
+    func actualizarTarea(_ tarea: Tarea, nuevoTitulo: String, estaCompletada: Bool) async {
         iniciarCarga()
         do {
-            let tareaActualizada = tarea.actualizando(titulo: nuevoTitulo, completada: completada)
-            let confirmacion = try await servicio.actualizarTarea(tareaActualizada)
+            let tareaActualizada = tarea.actualizando(titulo: nuevoTitulo, estaCompletada: estaCompletada)
+            let confirmacion     = try await servicio.actualizarTarea(tareaActualizada)
             reemplazar(tarea: confirmacion)
         } catch {
             manejarError(error)
@@ -87,12 +89,11 @@ final class TareasViewModel: ObservableObject {
 
     /// Alterna el estado de completado de una tarea (toggle rápido desde la lista).
     func alternarCompletado(de tarea: Tarea) async {
-        await actualizarTarea(tarea, nuevoTitulo: tarea.titulo, completada: !tarea.completada)
+        await actualizarTarea(tarea, nuevoTitulo: tarea.titulo, estaCompletada: !tarea.estaCompletada)
     }
 
     /// Elimina una o varias tareas (usada por el gesto de swipe en la lista).
     func eliminarTareas(en indices: IndexSet) async {
-        // Capturamos las tareas a eliminar antes de modificar el arreglo.
         let tareasAEliminar = indices.compactMap { tareas[safe: $0] }
         iniciarCarga()
         for tarea in tareasAEliminar {
@@ -102,28 +103,26 @@ final class TareasViewModel: ObservableObject {
                 manejarError(error)
             }
         }
-        // Actualizamos la lista local independientemente de la respuesta
-        // (JSONPlaceholder siempre responde 200 al DELETE).
         tareas.remove(atOffsets: indices)
         finalizarCarga()
     }
 
     /// Prepara el formulario para editar una tarea existente.
     func seleccionarParaEditar(_ tarea: Tarea) {
-        tareaParaEditar  = tarea
+        tareaParaEditar   = tarea
         mostrarFormulario = true
     }
 
     /// Prepara el formulario en modo creación.
     func mostrarFormularioCreacion() {
-        tareaParaEditar  = nil
+        tareaParaEditar   = nil
         mostrarFormulario = true
     }
 
     /// Cierra el formulario y limpia el estado de edición.
     func cerrarFormulario() {
         mostrarFormulario = false
-        tareaParaEditar  = nil
+        tareaParaEditar   = nil
     }
 
     /// Limpia el error actual (llamado tras descartar la alerta).

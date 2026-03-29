@@ -1,6 +1,6 @@
 // MARK: - VistaTareas.swift
 // Vista principal del módulo de tareas.
-// Muestra la lista, maneja estados de carga/error
+// Muestra la lista de tareas traídas desde Postgres, maneja estados de carga/error
 // y coordina la navegación al formulario de creación/edición.
 
 import SwiftUI
@@ -61,7 +61,6 @@ struct VistaTareas: View {
         List {
             ForEach(viewModel.tareas) { tarea in
                 VistaCeldaTarea(tarea: tarea) {
-                    // Toggle completado al pulsar el checkbox
                     Task { await viewModel.alternarCompletado(de: tarea) }
                 } alPulsarEditar: {
                     viewModel.seleccionarParaEditar(tarea)
@@ -110,23 +109,23 @@ struct VistaCeldaTarea: View {
         HStack(spacing: 12) {
             // Botón de completado (checkbox)
             Button(action: alPulsarCompletado) {
-                Image(systemName: tarea.completada ? "checkmark.circle.fill" : "circle")
+                Image(systemName: tarea.estaCompletada ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(tarea.completada ? .green : .secondary)
+                    .foregroundStyle(tarea.estaCompletada ? .green : .secondary)
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(tarea.completada ? "Marcar como pendiente" : "Marcar como completada")
+            .accessibilityLabel(tarea.estaCompletada ? "Marcar como pendiente" : "Marcar como completada")
 
-            // Título de la tarea
+            // Título y fecha de creación
             VStack(alignment: .leading, spacing: 2) {
                 Text(tarea.titulo)
                     .font(.body)
-                    .strikethrough(tarea.completada, color: .secondary)
-                    .foregroundStyle(tarea.completada ? .secondary : .primary)
+                    .strikethrough(tarea.estaCompletada, color: .secondary)
+                    .foregroundStyle(tarea.estaCompletada ? .secondary : .primary)
                     .lineLimit(2)
 
-                Text("ID: \(tarea.id)")
+                Text("Creada: \(tarea.fechaCreacion.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -175,11 +174,14 @@ struct VistaListaVacia: View {
 // MARK: - Previews
 
 #Preview("Lista con datos") {
-    NavigationStack {
-        // Preview usando datos de prueba del modelo
-        let vm = TareasViewModel(servicio: ServicioMockTareas(tareas: Tarea.listaDePrueba))
-        VistaTareas()
-            .environmentObject(vm)
+    VistaTareas()
+        .environment(\.locale, .init(identifier: "es"))
+}
+
+#Preview("Celda completada") {
+    List {
+        VistaCeldaTarea(tarea: Tarea.ejemploCompletada) {} alPulsarEditar: {}
+        VistaCeldaTarea(tarea: Tarea.ejemplo) {} alPulsarEditar: {}
     }
 }
 
