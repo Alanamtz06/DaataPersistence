@@ -1,11 +1,5 @@
-// MARK: - ClienteHTTP.swift
-// Abstracción de URLSession para peticiones HTTP genéricas y reutilizables.
-// Centraliza la construcción de requests, validación de respuestas
-// y decodificación JSON, siguiendo el principio DRY.
 
 import Foundation
-
-// MARK: - Protocolo de Sesión (para mocking en tests)
 
 /// Permite reemplazar `URLSession` por una sesión simulada en pruebas unitarias.
 protocol ProtocoloSesionHTTP {
