@@ -1,13 +1,13 @@
 // MARK: - ServicioTareas.swift
-// Implementación concreta del CRUD de tareas usando la API REST.
-// Conecta con: https://jsonplaceholder.typicode.com/todos
+// Implementación concreta del CRUD de tareas usando el backend Node.js/Postgres.
+// Transforma el modelo Tarea en los DTOs que espera cada endpoint.
 
 import Foundation
 
 // MARK: - Servicio de Tareas
 
 /// Implementa `ProtocoloServicioTareas` usando `ClienteHTTP`.
-/// Es el único punto de la app que conoce los endpoints concretos de la API.
+/// Es el único punto de la app que conoce los endpoints concretos del backend.
 final class ServicioTareas: ProtocoloServicioTareas {
 
     // MARK: - Dependencias
@@ -22,43 +22,37 @@ final class ServicioTareas: ProtocoloServicioTareas {
 
     // MARK: - ProtocoloServicioTareas
 
-    /// GET /todos?userId={idUsuario}
-    /// Obtiene todas las tareas del usuario. Limita a 10 para no saturar la UI.
-    func obtenerTareas(idUsuario: Int = 1) async throws -> [Tarea] {
-        let ruta = "\(ConfiguracionAPI.rutaTareas)?userId=\(idUsuario)&_limit=10"
-        return try await clienteHTTP.solicitar(ruta: ruta)
+    /// GET /tareas
+    /// Obtiene todas las tareas almacenadas en la base de datos.
+    func obtenerTareas() async throws -> [Tarea] {
+        return try await clienteHTTP.solicitar(ruta: ConfiguracionAPI.rutaTareas)
     }
 
-    /// GET /todos/{id}
-    /// Obtiene una tarea individual por su identificador.
-    func obtenerTarea(id: Int) async throws -> Tarea {
-        let ruta = "\(ConfiguracionAPI.rutaTareas)/\(id)"
-        return try await clienteHTTP.solicitar(ruta: ruta)
-    }
-
-    /// POST /todos
-    /// Crea una nueva tarea y retorna el objeto con el ID asignado por el servidor.
+    /// POST /tareas
+    /// Crea una nueva tarea. Envía solo el título; el servidor asigna id y fecha_creacion.
     func crearTarea(_ tarea: Tarea) async throws -> Tarea {
+        let dto = CrearTareaDTO(titulo: tarea.titulo)
         return try await clienteHTTP.solicitar(
             ruta: ConfiguracionAPI.rutaTareas,
             metodo: .crear,
-            cuerpo: tarea
+            cuerpo: dto
         )
     }
 
-    /// PUT /todos/{id}
-    /// Actualiza completamente una tarea existente.
+    /// PUT /tareas/:id
+    /// Actualiza título y estado de completado de una tarea existente.
     func actualizarTarea(_ tarea: Tarea) async throws -> Tarea {
         let ruta = "\(ConfiguracionAPI.rutaTareas)/\(tarea.id)"
+        let dto  = ActualizarTareaDTO(titulo: tarea.titulo, estaCompletada: tarea.estaCompletada)
         return try await clienteHTTP.solicitar(
             ruta: ruta,
             metodo: .actualizar,
-            cuerpo: tarea
+            cuerpo: dto
         )
     }
 
-    /// DELETE /todos/{id}
-    /// Elimina una tarea del servidor.
+    /// DELETE /tareas/:id
+    /// Elimina una tarea por su identificador.
     func eliminarTarea(id: Int) async throws {
         let ruta = "\(ConfiguracionAPI.rutaTareas)/\(id)"
         try await clienteHTTP.solicitarSinRespuesta(ruta: ruta, metodo: .eliminar)

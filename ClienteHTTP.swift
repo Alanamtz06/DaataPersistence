@@ -12,19 +12,21 @@ extension URLSession: ProtocoloSesionHTTP {}
 
 // MARK: - Constantes de Red
 
-/// Valores de configuración de la API REST centralizado en un solo lugar.
+/// Valores de configuración del backend Node.js/Postgres centralizados en un solo lugar.
+/// Para usar con dispositivo físico, cambia `urlBase` a la IP local de tu Mac
+/// (p. ej. "http://192.168.1.X:3000"). El simulador de iOS acepta "localhost".
 enum ConfiguracionAPI {
-    static let urlBase       = "https://jsonplaceholder.typicode.com"
-    static let rutaTareas    = "/todos"
-    static let tiempoEspera  = 30.0
+    static let urlBase      = "http://localhost:3000"
+    static let rutaTareas   = "/tareas"
+    static let tiempoEspera = 30.0
 }
 
 // MARK: - Método HTTP
 
 /// Verbos HTTP soportados por el cliente.
 enum MetodoHTTP: String {
-    case obtener  = "GET"
-    case crear    = "POST"
+    case obtener   = "GET"
+    case crear     = "POST"
     case actualizar = "PUT"
     case eliminar  = "DELETE"
 }
@@ -44,8 +46,29 @@ final class ClienteHTTP {
     // MARK: - Inicializador
 
     init(sesion: ProtocoloSesionHTTP = URLSession.shared) {
-        self.sesion      = sesion
-        self.decodificador = JSONDecoder()
+        self.sesion = sesion
+
+        // Decodificador con estrategia flexible para fechas ISO 8601 de Postgres.
+        // Intenta primero con milisegundos ("2024-01-15T10:30:00.000Z"),
+        // luego sin ellos ("2024-01-15T10:30:00Z").
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .custom { decoder in
+            let contenedor = try decoder.singleValueContainer()
+            let cadena     = try contenedor.decode(String.self)
+            let formato    = ISO8601DateFormatter()
+
+            formato.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let fecha = formato.date(from: cadena) { return fecha }
+
+            formato.formatOptions = [.withInternetDateTime]
+            if let fecha = formato.date(from: cadena) { return fecha }
+
+            throw DecodingError.dataCorruptedError(
+                in: contenedor,
+                debugDescription: "Formato de fecha no reconocido: \(cadena)"
+            )
+        }
+        self.decodificador = dec
         self.codificador   = JSONEncoder()
     }
 
