@@ -1,6 +1,7 @@
 // MARK: - ClienteHTTPTests.swift
 // Pruebas unitarias del ClienteHTTP usando SesionMockHTTP.
-// Valida: construcción de requests, decodificación JSON y manejo de errores HTTP.
+// Valida: construcción de requests, decodificación JSON con campos de Postgres
+// (snake_case), mapeo de fechas ISO 8601 y manejo de errores HTTP.
 
 import XCTest
 @testable import DaataPersistence
@@ -26,34 +27,101 @@ final class ClienteHTTPTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - Tests: solicitar<T>
+    // MARK: - Tests: solicitar<T> con modelo Postgres
 
     func test_solicitar_decodificaArregloCorrectamente_conDatosValidos() async throws {
-        // Dado
-        let tareasEsperadas = [Tarea.ejemplo, Tarea.ejemploCompletada]
-        sesionMock = try SesionMockHTTP.con(tareas: tareasEsperadas)
+        // Dado: JSON con campos snake_case tal como devuelve el backend de Postgres
+        let json = """
+        [
+            {
+                "id": 1,
+                "titulo": "Comprar leche",
+                "esta_completada": false,
+                "fecha_creacion": "2024-06-01T10:00:00.000Z"
+            },
+            {
+                "id": 2,
+                "titulo": "Hacer ejercicio",
+                "esta_completada": true,
+                "fecha_creacion": "2024-06-02T09:00:00Z"
+            }
+        ]
+        """.data(using: .utf8)!
+        sesionMock = SesionMockHTTP(datosRespuesta: json, codigoEstadoHTTP: 200)
         sut = ClienteHTTP(sesion: sesionMock)
 
         // Cuando
-        let tareasObtenidas: [Tarea] = try await sut.solicitar(ruta: "/todos")
+        let tareasObtenidas: [Tarea] = try await sut.solicitar(ruta: ConfiguracionAPI.rutaTareas)
 
         // Entonces
         XCTAssertEqual(tareasObtenidas.count, 2)
         XCTAssertEqual(tareasObtenidas[0].id, 1)
-        XCTAssertEqual(tareasObtenidas[1].completada, true)
+        XCTAssertFalse(tareasObtenidas[0].estaCompletada,
+                       "esta_completada: false debe mapearse a estaCompletada = false")
+        XCTAssertTrue(tareasObtenidas[1].estaCompletada,
+                      "esta_completada: true debe mapearse a estaCompletada = true")
     }
 
     func test_solicitar_decodificaTareaIndividual_conDatosValidos() async throws {
         // Dado
-        sesionMock = try SesionMockHTTP.con(tarea: Tarea.ejemplo)
+        let json = """
+        {
+            "id": 10,
+            "titulo": "Leer un libro",
+            "esta_completada": false,
+            "fecha_creacion": "2024-05-20T14:30:00.000Z"
+        }
+        """.data(using: .utf8)!
+        sesionMock = SesionMockHTTP(datosRespuesta: json, codigoEstadoHTTP: 200)
         sut = ClienteHTTP(sesion: sesionMock)
 
         // Cuando
-        let tarea: Tarea = try await sut.solicitar(ruta: "/todos/1")
+        let tarea: Tarea = try await sut.solicitar(ruta: "\(ConfiguracionAPI.rutaTareas)/10")
 
         // Entonces
-        XCTAssertEqual(tarea.id, Tarea.ejemplo.id)
-        XCTAssertEqual(tarea.titulo, Tarea.ejemplo.titulo)
+        XCTAssertEqual(tarea.id, 10, "El id debe ser Int 10 (SERIAL de Postgres)")
+        XCTAssertEqual(tarea.titulo, "Leer un libro")
+        XCTAssertNotNil(tarea.fechaCreacion, "fecha_creacion debe decodificarse a Date")
+    }
+
+    // MARK: - Tests: mapeo de fecha ISO 8601 de Postgres
+
+    func test_solicitar_decodificaFechaConMilisegundos_correctamente() async throws {
+        // Postgres devuelve timestamps con milisegundos ("2024-06-15T12:00:00.000Z")
+        let json = """
+        [{
+            "id": 1,
+            "titulo": "Tarea con ms",
+            "esta_completada": false,
+            "fecha_creacion": "2024-06-15T12:00:00.000Z"
+        }]
+        """.data(using: .utf8)!
+        sesionMock = SesionMockHTTP(datosRespuesta: json, codigoEstadoHTTP: 200)
+        sut = ClienteHTTP(sesion: sesionMock)
+
+        let tareas: [Tarea] = try await sut.solicitar(ruta: ConfiguracionAPI.rutaTareas)
+
+        XCTAssertNotNil(tareas.first?.fechaCreacion,
+                        "Debe decodificar ISO 8601 con milisegundos (formato de Postgres)")
+    }
+
+    func test_solicitar_decodificaFechaSinMilisegundos_correctamente() async throws {
+        // También debe aceptar timestamps sin milisegundos
+        let json = """
+        [{
+            "id": 2,
+            "titulo": "Tarea sin ms",
+            "esta_completada": true,
+            "fecha_creacion": "2024-06-15T12:00:00Z"
+        }]
+        """.data(using: .utf8)!
+        sesionMock = SesionMockHTTP(datosRespuesta: json, codigoEstadoHTTP: 200)
+        sut = ClienteHTTP(sesion: sesionMock)
+
+        let tareas: [Tarea] = try await sut.solicitar(ruta: ConfiguracionAPI.rutaTareas)
+
+        XCTAssertNotNil(tareas.first?.fechaCreacion,
+                        "Debe decodificar ISO 8601 sin milisegundos")
     }
 
     // MARK: - Tests: errores HTTP
@@ -65,7 +133,7 @@ final class ClienteHTTPTests: XCTestCase {
 
         // Cuando / Entonces
         await assertLanzaError(.respuestaInvalida(codigoHTTP: 500)) {
-            let _: [Tarea] = try await sut.solicitar(ruta: "/todos")
+            let _: [Tarea] = try await sut.solicitar(ruta: ConfiguracionAPI.rutaTareas)
         }
     }
 
@@ -76,7 +144,7 @@ final class ClienteHTTPTests: XCTestCase {
 
         // Cuando / Entonces
         await assertLanzaError(.recursoNoEncontrado) {
-            let _: Tarea = try await sut.solicitar(ruta: "/todos/99999")
+            let _: Tarea = try await sut.solicitar(ruta: "\(ConfiguracionAPI.rutaTareas)/99999")
         }
     }
 
@@ -90,7 +158,7 @@ final class ClienteHTTPTests: XCTestCase {
 
         // Cuando / Entonces
         await assertLanzaError(.decodificacionFallida) {
-            let _: [Tarea] = try await sut.solicitar(ruta: "/todos")
+            let _: [Tarea] = try await sut.solicitar(ruta: ConfiguracionAPI.rutaTareas)
         }
     }
 
@@ -102,7 +170,7 @@ final class ClienteHTTPTests: XCTestCase {
 
         // Cuando / Entonces
         do {
-            let _: [Tarea] = try await sut.solicitar(ruta: "/todos")
+            let _: [Tarea] = try await sut.solicitar(ruta: ConfiguracionAPI.rutaTareas)
             XCTFail("Debería haber lanzado un error")
         } catch let error as ErrorRed {
             if case .errorDesconocido = error {
@@ -124,7 +192,7 @@ final class ClienteHTTPTests: XCTestCase {
 
         // Cuando / Entonces: no debe lanzar
         do {
-            try await sut.solicitarSinRespuesta(ruta: "/todos/1", metodo: .eliminar)
+            try await sut.solicitarSinRespuesta(ruta: "\(ConfiguracionAPI.rutaTareas)/1", metodo: .eliminar)
         } catch {
             XCTFail("No debería lanzar error: \(error)")
         }
@@ -151,5 +219,65 @@ final class ClienteHTTPTests: XCTestCase {
             XCTFail("Se esperaba ErrorRed, se obtuvo: \(error)",
                     file: archivo, line: linea)
         }
+    }
+}
+
+// MARK: - SesionMockHTTP
+
+/// Implementación simulada de `ProtocoloSesionHTTP` para pruebas unitarias.
+/// Devuelve datos y códigos HTTP predefinidos sin realizar peticiones de red reales.
+final class SesionMockHTTP: ProtocoloSesionHTTP {
+
+    private let datosRespuesta: Data
+    private let codigoEstadoHTTP: Int
+    private let errorSimulado: Error?
+
+    // Inicializador general
+    init(datosRespuesta: Data = Data(), codigoEstadoHTTP: Int = 200, errorSimulado: Error? = nil) {
+        self.datosRespuesta   = datosRespuesta
+        self.codigoEstadoHTTP = codigoEstadoHTTP
+        self.errorSimulado    = errorSimulado
+    }
+
+    // Inicializador para simular fallos de red
+    convenience init(errorSimulado: Error) {
+        self.init(datosRespuesta: Data(), codigoEstadoHTTP: 0, errorSimulado: errorSimulado)
+    }
+
+    // MARK: - Fábricas con codificación ISO 8601 para fechas
+
+    /// Crea un mock que devuelve un arreglo de tareas codificado en JSON.
+    static func con(tareas: [Tarea]) throws -> SesionMockHTTP {
+        let datos = try Self.codificadorParaTests().encode(tareas)
+        return SesionMockHTTP(datosRespuesta: datos, codigoEstadoHTTP: 200)
+    }
+
+    /// Crea un mock que devuelve una tarea individual codificada en JSON.
+    static func con(tarea: Tarea) throws -> SesionMockHTTP {
+        let datos = try Self.codificadorParaTests().encode(tarea)
+        return SesionMockHTTP(datosRespuesta: datos, codigoEstadoHTTP: 200)
+    }
+
+    // MARK: - ProtocoloSesionHTTP
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        if let error = errorSimulado { throw error }
+        let respuesta = HTTPURLResponse(
+            url: request.url!,
+            statusCode: codigoEstadoHTTP,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        return (datosRespuesta, respuesta)
+    }
+
+    // MARK: - Helper privado
+
+    /// Codificador con estrategia ISO 8601 para que las fechas sean
+    /// decodificables por el ClienteHTTP (que espera strings ISO 8601).
+    private static func codificadorParaTests() -> JSONEncoder {
+        let codificador = JSONEncoder()
+        codificador.dateEncodingStrategy = .iso8601
+        return codificador
     }
 }

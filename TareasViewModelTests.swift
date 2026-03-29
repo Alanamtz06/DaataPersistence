@@ -1,6 +1,7 @@
 // MARK: - TareasViewModelTests.swift
 // Suite de pruebas unitarias para TareasViewModel.
-// Cubre: carga, creación, actualización, eliminación y manejo de errores.
+// Cubre: carga, creación, actualización, eliminación, manejo de errores
+// y mapeo de JSON con los campos de Postgres (snake_case ↔ camelCase).
 
 import XCTest
 @testable import DaataPersistence
@@ -86,7 +87,7 @@ final class TareasViewModelTests: XCTestCase {
                        "Debería haber una tarea más tras crear")
         XCTAssertEqual(sut.tareas.first?.titulo, "Nueva tarea de prueba",
                        "La nueva tarea debería estar al inicio de la lista")
-        XCTAssertFalse(sut.tareas.first?.completada ?? true,
+        XCTAssertFalse(sut.tareas.first?.estaCompletada ?? true,
                        "La nueva tarea debería estar marcada como no completada")
     }
 
@@ -126,30 +127,30 @@ final class TareasViewModelTests: XCTestCase {
         }
 
         // Cuando
-        await sut.actualizarTarea(tareaOriginal, nuevoTitulo: "Título actualizado", completada: true)
+        await sut.actualizarTarea(tareaOriginal, nuevoTitulo: "Título actualizado", estaCompletada: true)
 
         // Entonces
         let tareaActualizada = sut.tareas.first(where: { $0.id == tareaOriginal.id })
         XCTAssertEqual(tareaActualizada?.titulo, "Título actualizado")
-        XCTAssertTrue(tareaActualizada?.completada ?? false)
+        XCTAssertTrue(tareaActualizada?.estaCompletada ?? false)
         XCTAssertNil(sut.errorActual)
     }
 
     func test_alternarCompletado_invertaEstado() async {
         // Dado: tarea inicialmente no completada
         await sut.cargarTareas()
-        guard let tareaInicial = sut.tareas.first(where: { !$0.completada }) else {
+        guard let tareaInicial = sut.tareas.first(where: { !$0.estaCompletada }) else {
             XCTFail("Debe existir una tarea no completada en los datos de prueba")
             return
         }
-        let estadoOriginal = tareaInicial.completada
+        let estadoOriginal = tareaInicial.estaCompletada
 
         // Cuando
         await sut.alternarCompletado(de: tareaInicial)
 
         // Entonces
         let tareaModificada = sut.tareas.first(where: { $0.id == tareaInicial.id })
-        XCTAssertEqual(tareaModificada?.completada, !estadoOriginal,
+        XCTAssertEqual(tareaModificada?.estaCompletada, !estadoOriginal,
                        "El estado de completado debería haberse invertido")
     }
 
@@ -216,5 +217,113 @@ final class TareasViewModelTests: XCTestCase {
 
         // Entonces
         XCTAssertNil(sut.errorActual)
+    }
+
+    // MARK: - Tests: Mapeo JSON ↔ Postgres (snake_case)
+
+    func test_tarea_decodificaCorrectamente_desdeJSONDePostgres() throws {
+        // Verifica que el JSON con snake_case de Postgres se mapee
+        // correctamente a las propiedades camelCase de Swift.
+        let json = """
+        {
+            "id": 42,
+            "titulo": "Estudiar Swift",
+            "esta_completada": true,
+            "fecha_creacion": "2024-06-15T12:00:00.000Z"
+        }
+        """.data(using: .utf8)!
+
+        // Cuando
+        let tarea = try decodificadorDeRed().decode(Tarea.self, from: json)
+
+        // Entonces
+        XCTAssertEqual(tarea.id, 42,            "El id debe decodificarse como Int (SERIAL de Postgres)")
+        XCTAssertEqual(tarea.titulo, "Estudiar Swift")
+        XCTAssertTrue(tarea.estaCompletada,     "esta_completada debe mapearse a estaCompletada")
+        XCTAssertNotNil(tarea.fechaCreacion,    "fecha_creacion debe mapearse a fechaCreacion")
+    }
+
+    func test_tarea_idEsEntero_noUUID() throws {
+        // Garantiza que el id sea Int (Postgres SERIAL), no String ni UUID.
+        let json = """
+        {
+            "id": 7,
+            "titulo": "Tarea de prueba",
+            "esta_completada": false,
+            "fecha_creacion": "2024-01-01T00:00:00Z"
+        }
+        """.data(using: .utf8)!
+
+        let tarea = try decodificadorDeRed().decode(Tarea.self, from: json)
+
+        // El tipo Int se verifica en compilación; confirmamos el valor
+        let idComoEntero: Int = tarea.id
+        XCTAssertEqual(idComoEntero, 7, "El id debe ser Int 7")
+    }
+
+    func test_tarea_estaCompletadaFalse_cuandoJsonEnviaFalse() throws {
+        let json = """
+        {
+            "id": 1,
+            "titulo": "Tarea pendiente",
+            "esta_completada": false,
+            "fecha_creacion": "2024-01-01T00:00:00Z"
+        }
+        """.data(using: .utf8)!
+
+        let tarea = try decodificadorDeRed().decode(Tarea.self, from: json)
+
+        XCTAssertFalse(tarea.estaCompletada,
+                       "estaCompletada debe ser false cuando esta_completada es false en JSON")
+    }
+
+    func test_arregloTareas_decodificaDesdeJSONDePostgres() throws {
+        // Simula la respuesta real del GET /tareas con múltiples tareas.
+        let json = """
+        [
+            {
+                "id": 1,
+                "titulo": "Primera tarea",
+                "esta_completada": false,
+                "fecha_creacion": "2024-06-01T08:00:00.000Z"
+            },
+            {
+                "id": 2,
+                "titulo": "Segunda tarea",
+                "esta_completada": true,
+                "fecha_creacion": "2024-06-02T09:30:00.000Z"
+            }
+        ]
+        """.data(using: .utf8)!
+
+        let tareas = try decodificadorDeRed().decode([Tarea].self, from: json)
+
+        XCTAssertEqual(tareas.count, 2)
+        XCTAssertEqual(tareas[0].id, 1)
+        XCTAssertFalse(tareas[0].estaCompletada)
+        XCTAssertEqual(tareas[1].id, 2)
+        XCTAssertTrue(tareas[1].estaCompletada)
+    }
+
+    // MARK: - Helper privado
+
+    /// Construye un JSONDecoder con la estrategia de fechas ISO 8601
+    /// idéntica a la que usa ClienteHTTP en producción.
+    private func decodificadorDeRed() -> JSONDecoder {
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .custom { decoder in
+            let contenedor = try decoder.singleValueContainer()
+            let cadena     = try contenedor.decode(String.self)
+            let formato    = ISO8601DateFormatter()
+            formato.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let fecha = formato.date(from: cadena) { return fecha }
+            formato.formatOptions = [.withInternetDateTime]
+            if let fecha = formato.date(from: cadena) { return fecha }
+            throw DecodingError.dataCorruptedError(
+                in: contenedor,
+                debugDescription: "Formato de fecha no reconocido: \(cadena)"
+            )
+        }
+        return dec
     }
 }
