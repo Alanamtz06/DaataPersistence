@@ -9,4 +9,7 @@ const tareasControlador = require('../controladores/tareasControlador');
 // GET    /tareas        → obtener todas las tareas
 router.get('/', tareasControlador.obtenerTareas);
 
+// POST   /tareas        → crear una nueva tarea
+router.post('/', tareasControlador.crearTarea);
+
 module.exports = router;

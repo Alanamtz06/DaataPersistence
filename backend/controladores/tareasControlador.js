@@ -49,4 +49,38 @@ const obtenerTareas = (req, res) => {
     }
 };
 
-module.exports = { obtenerTareas };
+/**
+ * POST /tareas
+ * Crea una nueva tarea con los datos del cuerpo de la petición.
+ * Campo requerido: titulo (string no vacío).
+ * Responde 201 con la tarea creada.
+ */
+const crearTarea = (req, res) => {
+    try {
+        const { titulo } = req.body;
+
+        // Validar que el titulo esté presente y no sea vacío
+        if (!titulo || typeof titulo !== 'string' || titulo.trim() === '') {
+            return res.status(400).json({
+                error: 'El campo "titulo" es obligatorio y no puede estar vacío.'
+            });
+        }
+
+        const nuevaTarea = {
+            id:             uuidv4(),
+            titulo:         titulo.trim(),
+            estaCompletada: false,
+            fechaCreacion:  new Date().toISOString()
+        };
+
+        const tareas = leerTareas();
+        tareas.push(nuevaTarea);
+        guardarTareas(tareas);
+
+        return res.status(201).json(nuevaTarea);
+    } catch (error) {
+        return res.status(500).json({ error: 'Error interno al crear la tarea.' });
+    }
+};
+
+module.exports = { obtenerTareas, crearTarea };
