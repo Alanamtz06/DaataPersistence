@@ -12,4 +12,7 @@ router.get('/', tareasControlador.obtenerTareas);
 // POST   /tareas        → crear una nueva tarea
 router.post('/', tareasControlador.crearTarea);
 
+// PUT    /tareas/:id    → actualizar titulo y/o estaCompletada de una tarea existente
+router.put('/:id', tareasControlador.actualizarTarea);
+
 module.exports = router;
