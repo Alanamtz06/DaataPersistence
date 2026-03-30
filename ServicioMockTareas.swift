@@ -2,9 +2,6 @@
 // Implementación simulada de ProtocoloServicioTareas para:
 //   1. Pruebas unitarias (sin red real).
 //   2. Previews de SwiftUI (sin esperas).
-//
-// NOTA: Este archivo vive en el target principal para estar disponible
-// en Previews. En un proyecto real podría moverse al target de Tests.
 
 import Foundation
 
@@ -39,25 +36,21 @@ final class ServicioMockTareas: ProtocoloServicioTareas {
 
     // MARK: - ProtocoloServicioTareas
 
-    func obtenerTareas(idUsuario: Int) async throws -> [Tarea] {
+    func obtenerTareas() async throws -> [Tarea] {
         try await simularLatencia()
         try lanzarErrorSiNecesario()
         return tareas
     }
 
-    func obtenerTarea(id: Int) async throws -> Tarea {
-        try await simularLatencia()
-        try lanzarErrorSiNecesario()
-        guard let tarea = tareas.first(where: { $0.id == id }) else {
-            throw ErrorRed.recursoNoEncontrado
-        }
-        return tarea
-    }
-
     func crearTarea(_ tarea: Tarea) async throws -> Tarea {
         try await simularLatencia()
         try lanzarErrorSiNecesario()
-        let nueva = Tarea(id: idSiguiente(), idUsuario: tarea.idUsuario, titulo: tarea.titulo, completada: tarea.completada)
+        let nueva = Tarea(
+            id:             idSiguiente(),
+            titulo:         tarea.titulo,
+            estaCompletada: false,
+            fechaCreacion:  Date()
+        )
         tareas.append(nueva)
         return nueva
     }
